@@ -1,0 +1,24 @@
+name: Terraform AI Lab
+
+on:
+  pull_request:
+    paths:
+      - "ai-terraform-mcp-lab/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-terraform-mcp-lab/modules/azure-storage-account
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false
+      - run: terraform validate
