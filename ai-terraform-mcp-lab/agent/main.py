@@ -43,7 +43,7 @@ async def main():
 
     server = StdioServerParameters(
         command=os.environ.get("PYTHON", "python3"),
-        args=[str(ROOT / "mcp_server" / "server.py")],
+        args=["-m", "mcp_server.server"],
         env=env,
     )
 
