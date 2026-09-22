@@ -1,13 +1,15 @@
 import asyncio
+import json
 import os
-import sys
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-load_dotenv()
+ROOT = Path(__file__).resolve().parents[1]
+load_dotenv(ROOT / ".env")
 
 SYSTEM = """You are a Terraform platform engineering assistant.
 Use only approved modules exposed by MCP.
@@ -36,11 +38,15 @@ def ollama_chat(messages, tools):
     return r.json()["message"]
 
 async def main():
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+
     server = StdioServerParameters(
-        command=sys.executable,
-        args=["-m", "ai_terraform_mcp_lab.mcp_server.server"],
-        env=os.environ.copy(),
+        command=os.environ.get("PYTHON", "python3"),
+        args=[str(ROOT / "mcp_server" / "server.py")],
+        env=env,
     )
+
     async with stdio_client(server) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -56,24 +62,36 @@ async def main():
 
             messages = [{"role": "system", "content": SYSTEM}]
             print("AI Terraform Agent listo. Escribe 'exit' para salir.")
+
             while True:
                 user = input("\nTú: ").strip()
                 if user.lower() in {"exit", "quit"}:
                     break
+
                 messages.append({"role": "user", "content": user})
+
                 for _ in range(12):
                     assistant = ollama_chat(messages, tools)
                     messages.append(assistant)
+
                     if not assistant.get("tool_calls"):
                         print(f"\nAgente: {assistant.get('content', '')}")
                         break
+
                     for call in assistant["tool_calls"]:
-                        result = await session.call_tool(
-                            call["function"]["name"],
-                            call["function"].get("arguments", {}),
+                        name = call["function"]["name"]
+                        arguments = call["function"].get("arguments", {})
+                        if isinstance(arguments, str):
+                            arguments = json.loads(arguments)
+
+                        result = await session.call_tool(name, arguments)
+                        content = "".join(
+                            block.text for block in result.content if hasattr(block, "text")
                         )
-                        content = "".join(block.text for block in result.content if hasattr(block, "text"))
-                        messages.append({"role": "tool", "content": content})
+                        messages.append({
+                            "role": "tool",
+                            "content": content,
+                        })
                 else:
                     print("\nAgente: alcanzó el límite de pasos de esta solicitud.")
 
